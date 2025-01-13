@@ -342,11 +342,13 @@ class SteinVI:
         )
         return jnp.linalg.norm(particle_grads), res_grads
 
-    def init(self, rng_key, *args, **kwargs):
+    def init(self, rng_key, *args, guide_init_params=None, **kwargs):
         """Register random variable transformations, constraints and determine initialize positions of the particles.
 
         :param jax.random.PRNGKey rng_key: Random number generator seed.
         :param args: Positional arguments to the model and guide.
+        :param guide_init_params: Initialize position of particles. Expects initial positions to be constraint space
+            and that first dimension is size num_stein_particles.
         :param kwargs: Keyword arguments to the model and guide.
         :return: Initial :data:`SteinVIState`.
         """
@@ -360,14 +362,22 @@ class SteinVI:
             *args, **kwargs, **self.static_kwargs
         )
 
-        guide_init_params = self._find_init_params(
-            particle_seed, self._init_guide, args, kwargs
-        )
 
         guide_init = handlers.seed(self.guide, guide_seed)
         guide_trace = handlers.trace(guide_init).get_trace(
             *args, **kwargs, **self.static_kwargs
         )
+
+        if guide_init_params is None:
+            guide_init_params = self._find_init_params(
+                particle_seed, self._init_guide, args, kwargs
+            )
+        else:
+            # TODO: 
+            # 1. check particles are the right shape
+            # 2. check particles are not in unconstraint space
+            pass
+
 
         params = {}
         transforms = {}
