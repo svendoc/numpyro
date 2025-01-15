@@ -29,6 +29,9 @@ from numpyro.infer.elbo import _apply_vmap
 from numpyro.primitives import mutable as numpyro_mutable
 from numpyro.util import fori_loop
 
+# TODO: check reuse
+# activate experimental check for key reuse
+# jax.config.update('jax_debug_key_reuse', True)  
 
 def assert_equal(a, b, prec=0):
     return jax.tree.map(lambda a, b: assert_allclose(a, b, atol=prec), a, b)
