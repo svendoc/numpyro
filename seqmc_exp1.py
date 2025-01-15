@@ -18,7 +18,7 @@ def evolvep1(state,y):
     x, t = state
     x = sample('x', Normal(x, 1.))
     t = t + 1
-    y = sample('y', Normal(x+1, .1), obs=y)
+    y = sample('y', Normal(x+1, .2), obs=y)
     return (x, t), y
 
 def modelp1(T, y):
@@ -46,7 +46,7 @@ def evolve(state,y):
     x, t = state
     x = sample('x', Normal(x, 1.))
     t = t + 1
-    y = sample('y', Normal(x, .1), obs=y)
+    y = sample('y', Normal(x, .2), obs=y)
     return (x, t), y
 
 def model(T, y):
@@ -64,7 +64,7 @@ def model(T, y):
     t0 = 0
 
     scan(
-        evolvep1, # sample p(x_{t+1}|x_t)p(y_{t+1}|x_{t+1})
+        evolve, # sample p(x_{t+1}|x_t)p(y_{t+1}|x_{t+1})
         (x0, t0), 
         y,
         length = T - 1  # we already have x0
@@ -110,7 +110,7 @@ x_app = jnp.concatenate([samples['x0'], res.params['xp']])
 plt.plot(x_app, label='MAP x (1 step)', color='yellow', linewidth=2)
 
 with seed(rng_seed=0):
-    res = MAP.run(prng_key(), 3000, T, samples['y'][0])
+    res = MAP.run(prng_key(), 3000, T, samples['y'][0] - 1)
 
 x_app = jnp.concatenate([samples['x0'],res.params['xp']])
 plt.plot(x_app, '--', label='MAP x (3k steps)', linewidth=3)
