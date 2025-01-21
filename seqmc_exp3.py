@@ -76,15 +76,15 @@ def guide(state, y):
     x = param('xp', lambda key: Normal().sample(key, (T-1,)))
     sample('x', Normal(x, 1.))
 
-mfvi = SVI(model, guide, Adagrad(1.), Trace_ELBO())
+smi = SVI(model, guide, Adagrad(1.), Trace_ELBO())
 with seed(rng_seed=0):
-    res = mfvi.run(prng_key(), 1, T, samples['y'][0])
+    res = smi.run(prng_key(), 1, T, samples['y'][0])
 
 x_app = jnp.concatenate([samples['x0'], res.params['xp']])
 plt.plot(x_app, label='mfvi(loc) x (1 step)', color='yellow', linewidth=3)
 
 with seed(rng_seed=0):
-    res = mfvi.run(prng_key(), 3000, T, samples['y'][0])
+    res = smi.run(prng_key(), 3000, T, samples['y'][0])
 
 x_app = jnp.concatenate([samples['x0'], res.params['xp']])
 plt.plot(x_app, '--', label='mfvi(loc) x (3k steps)', color='yellow', linewidth=3)
@@ -98,15 +98,15 @@ def guide(state, y):
 from numpyro.infer.autoguide import AutoNormal
 
 # mfvi = SVI(model, AutoNormal(model), Adagrad(1.), Trace_ELBO())
-mfvi = SVI(model, guide, Adagrad(1.), Trace_ELBO())
+smi = SVI(model, guide, Adagrad(1.), Trace_ELBO())
 with seed(rng_seed=0):
-    res = mfvi.run(prng_key(), 1, T, samples['y'][0])
+    res = smi.run(prng_key(), 1, T, samples['y'][0])
 
 x_app = jnp.concatenate([samples['x0'], res.params['xp']])
 plt.plot(x_app, label='mfvi(loc, scale) x (1 step)', color='red', linewidth=1)
 
 with seed(rng_seed=0):
-    res = mfvi.run(prng_key(), 3000, T, samples['y'][0])
+    res = smi.run(prng_key(), 3000, T, samples['y'][0])
 
 x_app = jnp.concatenate([samples['x0'], res.params['xp']])
 plt.plot(x_app, '--', label='mfvi(loc, scale) x (3k steps)', color='red', linewidth=3)
@@ -128,11 +128,31 @@ with seed(rng_seed=0):
     res = svgd.run(prng_key(), 3000, T, samples['y'][0])
 
 x_app = jnp.concatenate([samples['x0'].repeat(3).reshape(3,1), res.params['xp']], axis=1)
-plt.plot(x_app[0], label='svgd1 x (3k step)', linestyle='--', color='purple', linewidth=3)
-plt.plot(x_app[1], label='svgd2 x (3k step)', linestyle='--', color='purple', linewidth=3)
-plt.plot(x_app[2], label='svgd3 x (3k step)', linestyle='--', color='purple', linewidth=3)
+plt.plot(x_app[0], label='svgd1 x (3k step)',  color='purple', linewidth=3)
+plt.plot(x_app[1], label='svgd2 x (3k step)',  color='purple', linewidth=3)
+plt.plot(x_app[2], label='svgd3 x (3k step)',  color='purple', linewidth=3)
 
+def guide(state, y):
+    x = param('xp', lambda key: Normal().sample(key, (T-1,)))
+    scale = param('scale', lambda key: HalfNormal().sample(key, (T-1,)), constraint=positive)
+    sample('x', Normal(x, scale))
 
+smi = SteinVI(model, guide, Adagrad(1.), RBFKernel(), num_stein_particles=3)
+with seed(rng_seed=0):
+    res = smi.run(prng_key(), 1, T, samples['y'][0])
+
+x_app = jnp.concatenate([samples['x0'].repeat(3).reshape(3,1), res.params['xp']], axis=1)
+plt.plot(x_app[0], label='smi1 x (1 step)', color='orange', linewidth=1)
+plt.plot(x_app[1], label='smi2 x (1 step)', color='orange', linewidth=1)
+plt.plot(x_app[2], label='smi3 x (1 step)', color='orange', linewidth=1)
+
+with seed(rng_seed=0):
+    res = smi.run(prng_key(), 3000, T, samples['y'][0])
+
+x_app = jnp.concatenate([samples['x0'].repeat(3).reshape(3,1), res.params['xp']], axis=1)
+plt.plot(x_app[0], label='smi1 x (3k step)',linestyle='--', color='orange', linewidth=3)
+plt.plot(x_app[1], label='smi2 x (3k step)',linestyle='--', color='orange', linewidth=3)
+plt.plot(x_app[2], label='smi3 x (3k step)',linestyle='--', color='orange', linewidth=3)
 
 plt.xlabel('time')
 plt.ylabel('location')
