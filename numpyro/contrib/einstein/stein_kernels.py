@@ -51,7 +51,40 @@ class SteinKernel(ABC):
         :param rng_key: a JAX PRNGKey to initialize the kernel
         :param tuple particles_shape: shape of the input `particles` in :meth:`compute`
         """
-        pass
+
+
+class PeriodicKernel(SteinKernel):
+    def __init__(
+        self,
+        period,
+        scale,
+        mode="norm",
+        matrix_mode="norm_diag",
+    ):
+        assert mode == "norm"
+        self._mode = mode
+        self.matrix_mode = matrix_mode
+        self.variance = scale**2
+        self.period = period
+
+    def _normed(self):
+        return self._mode == "norm" or (
+            self.mode == "matrix" and self.matrix_mode == "norm_diag"
+        )
+
+    def compute(self, rng_key, particles, particle_info, loss_fn):
+
+        def kernel(x, y):
+            reduce = jnp.sum if self._normed() else lambda x: x
+            dist = reduce((x - y) ** 2)
+            res = jnp.exp(-.5 * jnp.sin((jnp.pi / self.period) * dist)**2)
+            return res
+
+        return kernel
+
+    @property
+    def mode(self):
+        return self._mode
 
 
 class RBFKernel(SteinKernel):
@@ -281,53 +314,6 @@ class RandomFeatureKernel(SteinKernel):
         return kernel
 
 
-class MixtureKernel(SteinKernel):
-    """Calculates a mixture of multiple kernels from eq. 1 of [1]. The kernel is given by
-
-        :math:`k(x,y) = \\sum_i w_ik_i(x,y)`,
-
-    where :math:`k_i` is a reproducing kernel and :math:`w_i \\in (0,\\infty)`.
-
-    :param ws: Weight of each kernel in the mixture.
-    :param kernel_fns: Different kernel functions to mix together.
-
-    **References:**
-
-    1. Ai, Qingzhong, et al. "Stein variational gradient descent with multiple kernels."
-        Cognitive Computation 15.2 (2023): 672-682.
-    """
-
-    def __init__(self, ws: list[float], kernel_fns: list[SteinKernel], mode="norm"):
-        assert len(ws) == len(kernel_fns)
-        assert len(kernel_fns) > 1
-        assert all(kf.mode == mode for kf in kernel_fns)
-        self.ws = ws
-        self.kernel_fns = kernel_fns
-
-    @property
-    def mode(self):
-        return self.kernel_fns[0].mode
-
-    def compute(self, rng_key, particles, particle_info, loss_fn):
-        kernels = [
-            kf.compute(rng_key, particles, particle_info, loss_fn)
-            for kf in self.kernel_fns
-        ]
-
-        def kernel(x, y):
-            res = self.ws[0] * kernels[0](x, y)
-            for w, k in zip(self.ws[1:], kernels[1:]):
-                res = res + w * k(x, y)
-            return res
-
-        return kernel
-
-    def init(self, rng_key, particles_shape):
-        for kf in self.kernel_fns:
-            rng_key, krng_key = random.split(rng_key)
-            kf.init(krng_key, particles_shape)
-
-
 class GraphicalKernel(SteinKernel):
     """Calculates the graphical kernel, also called the coordinate-wise kernel, from Theorem 1 in [1].
     The kernel is given by
@@ -512,3 +498,83 @@ class RadialGaussNewtonKernel(SteinKernel):
     @property
     def mode(self):
         return self._mode
+
+
+####################################################
+################# KERNEL OPERATORS #################
+####################################################
+
+
+class ProjectiveKernel(SteinKernel):
+    @property
+    def model(self):
+        return self.inner_kernel.mode
+
+    def __init__(self, proj_fn, inner_kernel: SteinKernel):
+        self.proj_fn = proj_fn
+        self.inner_kernel = inner_kernel
+
+    def compute(self, rng_key, particles, particle_info, loss_fn):
+        projected_particles = vmap(self.proj_fn)(particles)
+
+        # FIXME: update particle_info
+        kernel_fn = self.inner_kernel.compute(
+            rng_key, projected_particles, particle_info, loss_fn
+        )
+
+        def kernel(x, y):
+            proj_x = self.proj_fn(x)
+            proj_y = self.proj_fn(y)
+            return kernel_fn(proj_x, proj_y)
+
+        return kernel
+
+    def init(self, rng_key, particles_shape):
+        self.inner_kernel.init(rng_key, particles_shape)
+
+
+class MixtureKernel(SteinKernel):
+    """Calculates a mixture of multiple kernels from eq. 1 of [1]. The kernel is given by
+
+        :math:`k(x,y) = \\sum_i w_ik_i(x,y)`,
+
+    where :math:`k_i` is a reproducing kernel and :math:`w_i \\in (0,\\infty)`.
+
+    :param ws: Weight of each kernel in the mixture.
+    :param kernel_fns: Different kernel functions to mix together.
+
+    **References:**
+
+    1. Ai, Qingzhong, et al. "Stein variational gradient descent with multiple kernels."
+        Cognitive Computation 15.2 (2023): 672-682.
+    """
+
+    def __init__(self, ws: list[float], kernel_fns: list[SteinKernel], mode="norm"):
+        assert len(ws) == len(kernel_fns)
+        assert len(kernel_fns) > 1
+        assert all(kf.mode == mode for kf in kernel_fns)
+        self.ws = ws
+        self.kernel_fns = kernel_fns
+
+    @property
+    def mode(self):
+        return self.kernel_fns[0].mode
+
+    def compute(self, rng_key, particles, particle_info, loss_fn):
+        kernels = [
+            kf.compute(rng_key, particles, particle_info, loss_fn)
+            for kf in self.kernel_fns
+        ]
+
+        def kernel(x, y):
+            res = self.ws[0] * kernels[0](x, y)
+            for w, k in zip(self.ws[1:], kernels[1:]):
+                res = res + w * k(x, y)
+            return res
+
+        return kernel
+
+    def init(self, rng_key, particles_shape):
+        for kf in self.kernel_fns:
+            rng_key, krng_key = random.split(rng_key)
+            kf.init(krng_key, particles_shape)
