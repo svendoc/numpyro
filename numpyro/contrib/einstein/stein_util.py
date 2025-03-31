@@ -42,6 +42,19 @@ def median_bandwidth(particles, factor_fn):
     )
     return bandwidth
 
+def heatequation_bandwidth(particles):
+    """ Bandwidth selection for RBFKernel using the heat equation proposal from [1].
+
+
+    ### References
+      1. Liu, Chang, et al. "Understanding and accelerating particle-based variational inference."
+         International Conference on Machine Learning. PMLR, 2019.
+    """
+
+
+    return 0.
+
+
 
 def get_parameter_transform(site):
     constraint = site["kwargs"].get("constraint", real)
